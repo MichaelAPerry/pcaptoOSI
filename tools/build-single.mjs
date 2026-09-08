@@ -9,7 +9,7 @@
  * Run with: npm run build:single   (it runs `vite build` for you first)
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dist = new URL('../dist/', import.meta.url).pathname;
@@ -50,7 +50,17 @@ if (html.includes('assets/')) {
   process.exit(1);
 }
 
-const out = join(dist, 'pcap-osi-visualizer.html');
-writeFileSync(out, html);
 const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
-console.log(`Wrote dist/pcap-osi-visualizer.html (${kb} KB) — one file, no install, works offline.`);
+
+// The named copy is what people download and pass around.
+writeFileSync(join(dist, 'pcap-osi-visualizer.html'), html);
+
+// The hosted index is the same inlined file rather than a shell that fetches
+// ./assets/*.js. It costs nothing for a single-page app of this size, and it
+// removes a whole class of failure: no separate requests to be blocked by a
+// content blocker, cached stale, or broken by a base-path mistake. What is
+// served is then byte-for-byte what people download, so if one works both do.
+writeFileSync(join(dist, 'index.html'), html);
+rmSync(join(dist, 'assets'), { recursive: true, force: true });
+
+console.log(`Wrote dist/pcap-osi-visualizer.html and dist/index.html (${kb} KB each) — inlined, no external assets.`);

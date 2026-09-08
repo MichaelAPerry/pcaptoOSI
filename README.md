@@ -56,7 +56,8 @@ the capture still never leaves the machine.
 
 **2. One file, offline, no admin rights.** Download
 [`pcap-osi-visualizer.html`](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)
-and double-click it. The entire app — code, styles and all nine lab captures — is a
+and double-click it. It is byte-for-byte the same file the hosted version
+serves, so if the demo works, the download works. The entire app — code, styles and all nine lab captures — is a
 single 420 KB HTML file that runs straight from `file://`. This is the easiest
 route for a Windows classroom: put it on a shared drive or a USB stick and it
 works with no Node, no npm, no server and no installer. Build it yourself with
@@ -364,7 +365,7 @@ tests/
 | --- | --- |
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Type-check, then build to `dist/` |
-| `npm run build:single` | Build, then inline everything into one `dist/pcap-osi-visualizer.html` |
+| `npm run build:single` | Build, then inline everything into one file, written as both `dist/index.html` and `dist/pcap-osi-visualizer.html` |
 | `npm run preview` | Serve the production build |
 | `npm test` | Run the engine self-check |
 | `npm run typecheck` | Type-check only |
