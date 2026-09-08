@@ -4,9 +4,10 @@ Drop a packet capture into your browser and watch it come apart into the seven
 OSI layers — byte by byte, field by field, with a plain-English explanation of
 what every header field does and why its value in *this* packet matters.
 
-**[Live demo](https://michaelaperry.github.io/pcaptoOSI/)** ·
+**[Live demo](https://michaelperry.org/pcaposivisualizer.html)** ·
 **[Single-file download](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)**
-(419 KB, runs offline from `file://`)
+(419 KB, runs offline from `file://`) ·
+[GitHub Pages mirror](https://michaelaperry.github.io/pcaptoOSI/)
 
 ![The OSI layer inspector, with a field hovered and its bytes highlighted in the hex pane](docs/screenshots/01-layers.png)
 
@@ -49,8 +50,9 @@ the whole application.
 ## Running it — pick whichever is least trouble
 
 **1. In the browser, nothing to install.**
-<https://michaelaperry.github.io/pcaptoOSI/> — open the link, drop a capture in,
-done. Works on Windows, macOS, Linux, and on a school-managed laptop where you
+<https://michaelperry.org/pcaposivisualizer.html> — open the link, drop a
+capture in, done. (A mirror is published to
+<https://michaelaperry.github.io/pcaptoOSI/> by the Pages workflow.) Works on Windows, macOS, Linux, and on a school-managed laptop where you
 cannot install anything. The page makes no network requests after it loads, so
 the capture still never leaves the machine.
 

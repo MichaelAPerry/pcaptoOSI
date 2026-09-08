@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A browser-based teaching tool that dissects packet captures into the seven OSI layers, byte by byte, with plain-English explanations of every header field.",
   "license": "MIT",
-  "homepage": "https://michaelaperry.github.io/pcaptoOSI/",
+  "homepage": "https://michaelperry.org/pcaposivisualizer.html",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MichaelAPerry/pcaptoOSI.git"
