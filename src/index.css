@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * The seven layer colours are the backbone of the whole interface: the same
+ * hue means the same OSI layer in the packet list, the layer inspector, the
+ * encapsulation diagram and the hex pane. Learning the colour is part of
+ * learning the model.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+
+  --bg: #080b14;
+  --bg-raised: #0f1422;
+  --bg-panel: #121829;
+  --bg-hover: #1a2136;
+  --border: #232b42;
+  --border-strong: #35405f;
+  --text: #e8edf9;
+  --text-dim: #98a3bd;
+  --text-faint: #6b7590;
+  --accent: #4f9cf9;
+
+  --l1: #8b95ad;
+  --l2: #f0a848;
+  --l3: #3ec48a;
+  --l4: #45a9f0;
+  --l5: #a284f5;
+  --l6: #ef7bb4;
+  --l7: #f2724f;
+
+  --l1-soft: #8b95ad26;
+  --l2-soft: #f0a84826;
+  --l3-soft: #3ec48a26;
+  --l4-soft: #45a9f026;
+  --l5-soft: #a284f526;
+  --l6-soft: #ef7bb426;
+  --l7-soft: #f2724f26;
+}
+
+html.light {
+  color-scheme: light;
+
+  --bg: #f4f6fb;
+  --bg-raised: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-hover: #eaeffa;
+  --border: #d9e0ee;
+  --border-strong: #b9c3d8;
+  --text: #101728;
+  --text-dim: #4e5a75;
+  --text-faint: #7a8399;
+  --accent: #1f6fd0;
+
+  --l1: #626b80;
+  --l2: #b26a06;
+  --l3: #16855b;
+  --l4: #1668b8;
+  --l5: #6f45cf;
+  --l6: #c1367f;
+  --l7: #cc4620;
+
+  --l1-soft: #626b8022;
+  --l2-soft: #b26a0622;
+  --l3-soft: #16855b22;
+  --l4-soft: #1668b822;
+  --l5-soft: #6f45cf22;
+  --l6-soft: #c1367f22;
+  --l7-soft: #cc462022;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer utilities {
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .surface {
+    background: var(--bg-raised);
+  }
+  .hairline {
+    border-color: var(--border);
+  }
+  .dim {
+    color: var(--text-dim);
+  }
+  .faint {
+    color: var(--text-faint);
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+}
+
+/* Layer colour helpers, driven by a data-layer attribute. */
+[data-layer='1'] {
+  --layer-color: var(--l1);
+  --layer-soft: var(--l1-soft);
+}
+[data-layer='2'] {
+  --layer-color: var(--l2);
+  --layer-soft: var(--l2-soft);
+}
+[data-layer='3'] {
+  --layer-color: var(--l3);
+  --layer-soft: var(--l3-soft);
+}
+[data-layer='4'] {
+  --layer-color: var(--l4);
+  --layer-soft: var(--l4-soft);
+}
+[data-layer='5'] {
+  --layer-color: var(--l5);
+  --layer-soft: var(--l5-soft);
+}
+[data-layer='6'] {
+  --layer-color: var(--l6);
+  --layer-soft: var(--l6-soft);
+}
+[data-layer='7'] {
+  --layer-color: var(--l7);
+  --layer-soft: var(--l7-soft);
+}
+
+.layer-text {
+  color: var(--layer-color);
+}
+.layer-bg {
+  background: var(--layer-soft);
+}
+.layer-border {
+  border-color: var(--layer-color);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input {
+  font: inherit;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-in {
+  animation: fade-in 140ms ease-out;
+}
