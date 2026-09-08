@@ -11,7 +11,9 @@
     "typecheck": "tsc -b",
     "test": "vite build --ssr tests/harness.ts --outDir node_modules/.test --logLevel warn && node node_modules/.test/harness.js",
     "samples": "node tools/gen-samples.mjs",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm test && npm run build",
+    "build:single": "npm run build && node tools/build-single.mjs",
+    "build:artifact": "npm run build && node tools/build-artifact.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",

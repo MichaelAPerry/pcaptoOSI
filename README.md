@@ -10,19 +10,39 @@ no upload, no telemetry and no network access at runtime: the capture file is
 read with `FileReader`, parsed in JavaScript, and never leaves the machine.
 Load the page once and it keeps working offline for the rest of the lesson.
 
+## Running it — pick whichever is least trouble
+
+**1. In the browser, nothing to install.** Once this repository's Pages
+workflow has run (Settings → Pages → Source: GitHub Actions, then push to
+`main`), the tool is live at `https://<owner>.github.io/<repo>/` — open the
+link, drop a capture in, done. Works on Windows, macOS, Linux, and on a
+school-managed laptop where you cannot install anything. The page makes no
+network requests after it loads, so the capture still never leaves the machine.
+
+**2. One file, offline, no admin rights.** Download
+`pcap-osi-visualizer.html` from the Pages site (or the CI artifact) and
+double-click it. The entire app — code, styles and all nine lab captures — is a
+single 420 KB HTML file that runs straight from `file://`. This is the easiest
+route for a Windows classroom: put it on a shared drive or a USB stick and it
+works with no Node, no npm, no server and no installer. Build it yourself with
+`npm run build:single`.
+
+**3. From source, for development.**
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 ```
 
-That is the whole setup. Node 20.19+ (or 22.12+) is the only prerequisite.
+Node 20.19+ (or 22.12+) is the only prerequisite for option 3. Options 1 and 2
+need nothing but a browser.
 
 ---
 
 ## What it does
 
 **Ingestion.** Drag and drop a `.pcap` or `.pcapng` file, or click to browse.
-Eight lab captures are bundled so a student with no capture file of their own
+Nine lab captures are bundled so a student with no capture file of their own
 can start immediately.
 
 **Dissection.** Every frame is decoded from the link layer upwards and each
@@ -62,11 +82,13 @@ field to pin its full explanation in the side drawer.
   and the obsolete Packet block, with per-interface timestamp resolution
 
 **Link types**
-Ethernet II / IEEE 802.3 (with 802.1Q and QinQ VLAN stacks), raw IPv4, raw
-IPv6, Linux cooked capture (SLL and SLL2), BSD loopback.
+Ethernet II / IEEE 802.3 (with 802.1Q and QinQ VLAN stacks), IEEE 802.11 with
+and without a radiotap header, raw IPv4, raw IPv6, Linux cooked capture (SLL
+and SLL2), BSD loopback.
 
 **Protocols**
-ARP/RARP · IPv4 (options, fragmentation, DSCP/ECN, checksum verification) ·
+Radiotap · IEEE 802.11 (management, control and QoS data frames, with beacon
+and probe information elements) · LLC/SNAP · ARP/RARP · IPv4 (options, fragmentation, DSCP/ECN, checksum verification) ·
 IPv6 (extension-header chain) · TCP (all nine flags expanded to bits, MSS,
 window scale, SACK, timestamps, pseudo-header checksum verification) · UDP ·
 ICMP · ICMPv6 · DNS (full name decompression, all common record types) ·
@@ -85,15 +107,45 @@ The hard part of teaching OSI with real captures is that TCP/IP does not
 implement the model. Rather than papering over that, the tool makes the
 mismatch the lesson.
 
-**Layer 1 is synthesised, and says so.** A PCAP file contains no Layer 1 data
-at all: the preamble, start-of-frame delimiter, line coding, voltages or RF
-modulation, and usually the frame check sequence, are consumed and stripped by
-the network adapter before the capture driver ever sees the frame. What a
-capture *does* contain is metadata about the frame's physical arrival, and that
-is what this layer shows — wire arrival timestamp, captured length versus wire
-length, the capture interface, the link-layer encapsulation, and the
-serialisation time those bits occupied on a 1 Gbit/s and a 100 Mbit/s link. A
-dedicated field spells out exactly what is missing and why.
+**Layer 1 is reconstructed from everything the capture really knows.** It is
+often said that a PCAP contains no Layer 1 data at all, and for wired Ethernet
+that is nearly true: the preamble, start-of-frame delimiter, line coding,
+voltages and usually the frame check sequence are consumed and stripped by the
+adapter before the capture driver ever sees the frame. But a capture file
+carries a surprising amount *about* the physical arrival of each frame, and
+this tool digs all of it out and labels it Layer 1 rather than burying it under
+a generic "Frame" node:
+
+- wire arrival timestamp, and whether its resolution implies a hardware
+  timestamp taken at the PHY or a software one taken in the driver;
+- captured length versus wire length, in bytes **and** in bits;
+- **true medium occupancy** on Ethernet — the wire length plus the 7-byte
+  preamble, the 1-byte start-of-frame delimiter, the stripped 4-byte FCS and
+  the mandatory 12-byte inter-frame gap. Even "bytes on wire" understates the
+  physical footprint by 24 bytes, which is why a link saturated with 64-byte
+  frames wastes over a quarter of its capacity on framing;
+- serialisation delay, computed at the interface's real recorded bit rate when
+  the file says what it is, and against 1 Gbit/s and 100 Mbit/s when it does
+  not;
+- the pcapng Interface Description Block in full: interface id and name,
+  description, adapter hardware, capture host OS, nominal link speed, the
+  capture filter that was in effect, and the FCS length;
+- pcapng per-packet options: the **direction** the frame was travelling through
+  the adapter (which is what tells you whether a bad transport checksum means
+  corruption or merely checksum offload), the reception type — unicast,
+  multicast, broadcast or promiscuous — hardware-reported link-layer error
+  flags, and any comment stored with the frame.
+
+**And on Wi-Fi, Layer 1 stops being metadata and becomes measurement.** A
+monitor-mode capture prepends a radiotap header, which this tool dissects as a
+real Layer 1 protocol with real byte offsets — so unlike the synthesised fields
+above, it highlights in the hex pane like any other header. It carries what the
+radio actually measured: channel centre frequency in megahertz, received signal
+strength and noise floor in dBm, which antenna heard the frame, the MAC-layer
+TSF hardware timestamp, the modulation and coding scheme with its bandwidth and
+guard interval (decoded into a real data rate and a modulation such as
+"64-QAM 5/6 on two spatial streams"), and whether the hardware thought the FCS
+was valid. The bundled Wi-Fi capture exists to make exactly this point.
 
 **Layers 5 and 6 are populated from whatever is actually doing the job.**
 TCP/IP has no separate session or presentation protocol, so the tool shows
@@ -127,6 +179,7 @@ exactly why an ARP frame can never be routed off the local segment.
 | ICMP echo request and reply | L3/L4 | Hop counting from TTL, identifier/sequence matching — and it is a **pcapng** file |
 | DHCP lease (DORA) | L2/L4/L7 | Bootstrapping from 0.0.0.0, option TLVs, transaction as session |
 | IPv6 over a VLAN trunk | L2/L3 | 802.1Q tags, the IPv6 header, AAAA lookup, ICMPv6 echo |
+| Wi-Fi monitor mode | L1/L2 | Radiotap with measured dBm/frequency/MCS, 802.11 addressing, beacons and acknowledgements, a bad-FCS retry |
 
 These are **synthetic**. Every frame was constructed byte by byte from the
 relevant RFCs, with real Internet checksums and real TCP sequence arithmetic,
@@ -218,6 +271,8 @@ src/
     dissect/
       index.ts        entry point, link-type dispatch, synthesised Layer 1
       context.ts      shared dissection state and the field builder
+      radiotap.ts     Wi-Fi physical-layer measurements (the real Layer 1)
+      ieee80211.ts    802.11 framing, LLC/SNAP, beacon information elements
       ethernet.ts     Ethernet II / 802.3, VLAN stacks, ARP
       ipv4.ts ipv6.ts network layer, options, extension headers
       tcp.ts udp.ts icmp.ts    transport layer and checksum verification
@@ -232,6 +287,7 @@ src/
 tools/
   lib-pcap.mjs        frame construction helpers
   gen-samples.mjs     builds the bundled captures
+  build-single.mjs    inlines the build into one self-contained HTML file
 tests/
   harness.ts          engine self-check (npm test)
 ```
@@ -269,6 +325,7 @@ tests/
 | --- | --- |
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Type-check, then build to `dist/` |
+| `npm run build:single` | Build, then inline everything into one `dist/pcap-osi-visualizer.html` |
 | `npm run preview` | Serve the production build |
 | `npm test` | Run the engine self-check |
 | `npm run typecheck` | Type-check only |
@@ -278,8 +335,8 @@ tests/
 ### Tests
 
 `npm test` bundles `tests/harness.ts` with Vite's SSR build and runs it under
-Node. It loads all eight bundled captures through the real reader and the real
-dissectors and asserts roughly 3,500 things, among them:
+Node. It loads all nine bundled captures through the real reader and the real
+dissectors and asserts roughly 4,200 things, among them:
 
 - every capture parses with no reader or dissector warnings;
 - every field's byte range lies inside its frame — no dangling highlights;
@@ -301,8 +358,9 @@ Worth being straight about, since students will find these:
 - **No TCP stream reassembly.** Each segment is dissected on its own. An HTTP
   response split across segments is decoded from the segment that carries the
   headers; the rest shows as continuation data.
-- **No decryption.** TLS Application Data stays opaque. Key-log-file support
-  (`SSLKEYLOGFILE`) is the obvious next feature.
+- **No decryption.** TLS Application Data stays opaque, and so is an 802.11
+  frame with the Protected bit set. Key-log-file support (`SSLKEYLOGFILE`) and
+  WPA passphrase decryption are the obvious next features.
 - **No IP fragment reassembly.** Fragments after the first are flagged and
   explained rather than stitched back together.
 - **Compressed captures** (`.pcap.gz`) must be decompressed first.

@@ -20,4 +20,4 @@ export function linkTypeName(n: number): string {
 }
 
 /** Link types the dissector can decode end to end. */
-export const SUPPORTED_LINK_TYPES = new Set([0, 1, 101, 113, 228, 229, 276]);
+export const SUPPORTED_LINK_TYPES = new Set([0, 1, 101, 105, 113, 127, 228, 229, 276]);

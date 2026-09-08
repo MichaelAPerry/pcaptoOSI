@@ -8,6 +8,8 @@ import { DissectContext, field } from './context';
 import { dissectEthernet, addUnknownPayload } from './ethernet';
 import { dissectIPv4 } from './ipv4';
 import { dissectIPv6 } from './ipv6';
+import { dissectRadiotap } from './radiotap';
+import { dissect80211 } from './ieee80211';
 import { hex, readU16BE, readU32BE } from '../bytes';
 
 export function dissectPacket(
@@ -93,6 +95,12 @@ function dissectLinkLayer(ctx: DissectContext, linkType: number): void {
       break;
     case 229:
       dissectIPv6(ctx, 0);
+      break;
+    case 127:
+      dissectRadiotap(ctx, 0);
+      break;
+    case 105:
+      dissect80211(ctx, 0);
       break;
     case 113: {
       // Linux "cooked" capture: 16-byte pseudo-header, used when capturing on "any".
@@ -186,6 +194,8 @@ function addPhysicalLayer(
   const stamp = `${date.toISOString().replace('Z', '')}${fraction.toFixed(9).slice(11)}Z`;
   const sliced = raw.capturedLength < raw.originalLength;
   const bits = raw.originalLength * 8;
+  const resolution = iface?.timeResolution ?? 1e6;
+  const ethernetLike = linkType === 1;
 
   const fields: Field[] = [
     field({
@@ -205,7 +215,10 @@ function addPhysicalLayer(
       layer: 1,
       key: 'frame.arrival',
       synthetic: true,
-      why: `Recorded with a resolution of 1/${iface?.timeResolution ?? 1e6} second by the capturing host's clock.`,
+      why:
+        resolution >= 1e9
+          ? 'Recorded with nanosecond resolution. That precision normally means the timestamp was taken by the adapter itself, at the PHY, rather than by the operating system once the frame reached the driver.'
+          : `Recorded with a resolution of 1/${resolution} second by the capturing host's clock. Microsecond resolution usually means a software timestamp taken in the driver, so it includes some interrupt and scheduling jitter.`,
     }),
   ];
 
@@ -250,10 +263,33 @@ function addPhysicalLayer(
       layer: 1,
       key: 'frame.wirelen',
       synthetic: true,
-      why:
-        `At 1 Gbit/s these ${bits} bits occupy the medium for about ${((bits / 1e9) * 1e6).toFixed(2)} microseconds; at 100 Mbit/s, ${((bits / 1e8) * 1e6).toFixed(2)}. ` +
-        'Serialisation delay like this is a real, physical component of latency, and it is the one thing in the whole capture that is unambiguously Layer 1.',
+      why: serialisationNote(bits, iface?.speed),
     }),
+  );
+
+  // On Ethernet the true medium occupancy is larger than the frame: preamble,
+  // start-of-frame delimiter, the FCS the adapter removed, and the mandatory
+  // inter-frame gap all consume airtime that never appears in the capture.
+  if (ethernetLike) {
+    const overheadBytes = 8 + 4 + 12;
+    const totalBits = (raw.originalLength + overheadBytes) * 8;
+    fields.push(
+      field({
+        name: 'True medium occupancy',
+        value: `${raw.originalLength + overheadBytes} byte-times (${totalBits} bit-times)`,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText:
+          'What the frame really costs on the wire: the captured length plus 7 bytes of preamble, 1 byte of start-of-frame delimiter, the 4-byte frame check sequence the adapter stripped, and the 12-byte inter-frame gap that must follow.',
+        why:
+          `Even "bytes on wire" understates the physical footprint by ${overheadBytes} bytes. It matters most for small frames: a 64-byte frame occupies 88 byte-times, so a link saturated with minimum-sized frames wastes over a quarter of its capacity on framing overhead that no capture file records.`,
+      }),
+    );
+  }
+
+  fields.push(
     field({
       name: 'Capture interface',
       value: `#${raw.interfaceId}${iface?.name ? ` — ${iface.name}` : ''}`,
@@ -262,8 +298,149 @@ function addPhysicalLayer(
       layer: 1,
       key: 'frame.iface',
       synthetic: true,
-      why: iface?.description ? iface.description : undefined,
+      why:
+        meta.format === 'pcapng'
+          ? 'Read from the pcapng Interface Description Block, which names the exact port that ingested the frame. A pcapng file can interleave several interfaces in one capture, and this is what tells them apart.'
+          : iface?.description,
     }),
+  );
+
+  if (iface?.description) {
+    fields.push(
+      field({
+        name: 'Interface description',
+        value: iface.description,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'Free text the capturing tool recorded about this interface (pcapng option if_description).',
+      }),
+    );
+  }
+  if (iface?.hardware) {
+    fields.push(
+      field({
+        name: 'Adapter hardware',
+        value: iface.hardware,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'The physical adapter the capture came from (pcapng option if_hardware).',
+        why: 'The adapter decides what you can and cannot see. Checksum offload, large receive offload and VLAN tag stripping all happen in this chip, and each of them changes what ends up in the file.',
+      }),
+    );
+  }
+  if (iface?.os) {
+    fields.push(
+      field({
+        name: 'Capture host OS',
+        value: iface.os,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'The operating system that ran the capture (pcapng option if_os).',
+      }),
+    );
+  }
+  if (iface?.speed) {
+    fields.push(
+      field({
+        name: 'Interface speed',
+        value: formatBitRate(iface.speed),
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'The nominal bit rate of the link, recorded by the capture tool (pcapng option if_speed).',
+        why: `At ${formatBitRate(iface.speed)} these ${bits} bits take ${formatDuration(bits / iface.speed)} to clock onto the medium. That is serialisation delay: a real, physical component of latency that no amount of protocol tuning can remove.`,
+      }),
+    );
+  }
+  if (iface?.filter) {
+    fields.push(
+      field({
+        name: 'Capture filter in effect',
+        value: iface.filter,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'The BPF filter the capture ran with (pcapng option if_filter).',
+        why: 'Worth checking before concluding traffic is missing: the most common reason a packet is not in a capture is that the filter excluded it.',
+      }),
+    );
+  }
+
+  const options = raw.options;
+  if (options?.direction !== undefined && options.direction !== 0) {
+    fields.push(
+      field({
+        name: 'Direction',
+        value: options.direction === 1 ? 'inbound (received)' : 'outbound (transmitted)',
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'Which way the frame was moving through the adapter, from the pcapng epb_flags option.',
+        why:
+          options.direction === 2
+            ? 'This frame was transmitted by the capturing host. That is worth knowing before you trust its checksums: on an outbound frame the capture point sits before the hardware fills them in, so bad checksums here almost always mean offload rather than corruption.'
+            : 'This frame was received from the network, so its checksums were computed by the sender and are meaningful.',
+      }),
+    );
+  }
+  if (options?.receptionType) {
+    const types = ['unspecified', 'unicast', 'multicast', 'broadcast', 'promiscuous'];
+    fields.push(
+      field({
+        name: 'Reception type',
+        value: types[options.receptionType] ?? String(options.receptionType),
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'How the adapter came to receive this frame.',
+        why:
+          options.receptionType === 4
+            ? 'Received promiscuously: the frame was not addressed to this host at all, and the adapter only saw it because it was told to accept everything. On a switched network that usually means a mirror port or a tap.'
+            : undefined,
+      }),
+    );
+  }
+  if (options?.errorFlags) {
+    fields.push(
+      field({
+        name: 'Link-layer error flags',
+        value: hex(options.errorFlags, 4),
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        note: 'error',
+        whatText: 'Errors the capture hardware itself reported, such as a symbol error, a CRC failure or an oversized frame.',
+        why: 'These are faults detected below the frame — at the physical layer — and they point at cabling, optics or interference rather than at anything a protocol analyst can fix.',
+      }),
+    );
+  }
+  if (options?.comment) {
+    fields.push(
+      field({
+        name: 'Packet comment',
+        value: options.comment,
+        offset: 0,
+        length: 0,
+        layer: 1,
+        synthetic: true,
+        whatText: 'A note stored alongside this frame in the pcapng file (option opt_comment).',
+        why: 'Comments survive in the file, which makes pcapng captures a reasonable way to hand annotated evidence to someone else.',
+      }),
+    );
+  }
+
+  fields.push(
     field({
       name: 'Link-layer encapsulation',
       value: `${linkType} (${iface?.linkTypeName ?? meta.linkTypeName})`,
@@ -275,17 +452,24 @@ function addPhysicalLayer(
     }),
     field({
       name: 'What Layer 1 data is missing',
-      value: 'Preamble, SFD, line coding, voltages/RF — and usually the FCS',
+      value:
+        linkType === 127
+          ? 'Raw I/Q samples and the PLCP preamble — but the radio\'s own measurements survive, above'
+          : 'Preamble, SFD, line coding, voltages/RF — and usually the FCS',
       offset: 0,
       length: 0,
       layer: 1,
       key: 'frame.physical',
       synthetic: true,
       note: 'info',
+      why:
+        linkType === 127
+          ? 'A monitor-mode Wi-Fi capture is the exception to the usual rule. The driver prepends a radiotap header carrying what the radio actually measured — frequency, signal strength in dBm, antenna, modulation — so this frame has real physical-layer values, with real byte offsets you can highlight in the hex pane.'
+          : undefined,
     }),
     field({
       name: 'Frame Check Sequence',
-      value: 'not present in this capture',
+      value: fcsDescription(options?.fcsLength ?? iface?.fcsLength),
       offset: 0,
       length: 0,
       layer: 1,
@@ -300,9 +484,47 @@ function addPhysicalLayer(
     abbr: 'FRAME',
     layer: 1,
     virtual: true,
-    summary: `${raw.originalLength} bytes on the wire, ${raw.capturedLength} captured, interface #${raw.interfaceId}`,
+    summary:
+      `${raw.originalLength} bytes on the wire, ${raw.capturedLength} captured` +
+      `${iface?.name ? `, ${iface.name}` : `, interface #${raw.interfaceId}`}` +
+      `${raw.options?.direction === 2 ? ', outbound' : raw.options?.direction === 1 ? ', inbound' : ''}`,
     offset: 0,
     length: 0,
     fields,
   });
+}
+
+/** How long these bits take to clock onto the medium, at whatever rate we know. */
+function serialisationNote(bits: number, speed: number | undefined): string {
+  if (speed) {
+    return (
+      `At the interface's recorded ${formatBitRate(speed)} these ${bits} bits occupy the medium for ` +
+      `${formatDuration(bits / speed)}. Serialisation delay like this is a real, physical component of latency, ` +
+      'and it is the one number in the whole capture that is unambiguously Layer 1.'
+    );
+  }
+  return (
+    `At 1 Gbit/s these ${bits} bits occupy the medium for about ${formatDuration(bits / 1e9)}; at 100 Mbit/s, ` +
+    `${formatDuration(bits / 1e8)}. Serialisation delay like this is a real, physical component of latency, and it ` +
+    'is the one number in the whole capture that is unambiguously Layer 1.'
+  );
+}
+
+function formatBitRate(bps: number): string {
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(bps % 1e9 === 0 ? 0 : 1)} Gbit/s`;
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(bps % 1e6 === 0 ? 0 : 1)} Mbit/s`;
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(0)} kbit/s`;
+  return `${bps} bit/s`;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds >= 1e-3) return `${(seconds * 1e3).toFixed(2)} ms`;
+  if (seconds >= 1e-6) return `${(seconds * 1e6).toFixed(2)} µs`;
+  return `${(seconds * 1e9).toFixed(0)} ns`;
+}
+
+function fcsDescription(fcsLengthBits: number | undefined): string {
+  if (fcsLengthBits === undefined) return 'not present in this capture';
+  if (fcsLengthBits === 0) return 'stripped by the adapter (0 bits recorded)';
+  return `${fcsLengthBits} bits still attached to each frame`;
 }

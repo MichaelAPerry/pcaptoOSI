@@ -24,7 +24,15 @@ export function App() {
   const [encapMode, setEncapMode] = useState<'tx' | 'rx'>('tx');
   const [rightTab, setRightTab] = useState<RightTab>('osi');
   const [teacherMode, setTeacherMode] = useState(true);
-  const [light, setLight] = useState(false);
+  // Dark-first by design, but follow the host's stated preference on first
+  // paint so the tool does not fight the environment it is embedded in.
+  const [light, setLight] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const stamped = document.documentElement.dataset.theme;
+    if (stamped === 'light') return true;
+    if (stamped === 'dark') return false;
+    return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches;
+  });
   const [showLoader, setShowLoader] = useState(false);
 
   useEffect(() => {

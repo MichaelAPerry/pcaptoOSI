@@ -19,6 +19,16 @@ export function bytes(...parts) {
 export const u8 = (n) => Buffer.from([n & 0xff]);
 export const u16 = (n) => Buffer.from([(n >> 8) & 0xff, n & 0xff]);
 export const u24 = (n) => Buffer.from([(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]);
+export const u64 = (n) => {
+  const b = Buffer.alloc(8);
+  b.writeUInt32BE(Math.floor(n / 4294967296), 0);
+  b.writeUInt32BE(n >>> 0, 4);
+  return b;
+};
+
+/** A 32-bit value in the writer's byte order (big-endian, per the SHB magic). */
+export const u32le = (n) => u32(n);
+
 export const u32 = (n) => Buffer.from([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
 
 export function mac(str) {
@@ -238,7 +248,21 @@ export function writePcap(packets, { linkType = 1, snapLen = 262144, endian = 'l
   return Buffer.concat([header, ...records]);
 }
 
-export function writePcapng(packets, { linkType = 1, snapLen = 262144, ifName = 'eth0', ifDescription = '', comment = '' } = {}) {
+export function writePcapng(
+  packets,
+  {
+    linkType = 1,
+    snapLen = 262144,
+    ifName = 'eth0',
+    ifDescription = '',
+    comment = '',
+    ifOs = '',
+    ifHardware = '',
+    ifSpeed = 0,
+    ifFcsLen = null,
+    ifTsResol = 6,
+  } = {},
+) {
   const blocks = [];
 
   const shbOptions = comment
@@ -247,23 +271,44 @@ export function writePcapng(packets, { linkType = 1, snapLen = 262144, ifName = 
   const shbBody = Buffer.concat([u32(0x1a2b3c4d), u16(1), u16(0), Buffer.alloc(8, 0xff), shbOptions]);
   blocks.push(block(0x0a0d0d0a, shbBody));
 
+  const opt = (code, value) => Buffer.concat([u16(code), u16(value.length), pad4(value)]);
+  const textOpt = (code, text) => (text ? opt(code, Buffer.from(text, 'utf8')) : Buffer.alloc(0));
+
   const ifOptions = Buffer.concat([
-    u16(2),
-    u16(ifName.length),
-    pad4(Buffer.from(ifName, 'utf8')),
-    ...(ifDescription ? [u16(3), u16(ifDescription.length), pad4(Buffer.from(ifDescription, 'utf8'))] : []),
-    u16(9),
-    u16(1),
-    pad4(Buffer.from([6])), // if_tsresol: 10^-6 seconds
+    textOpt(2, ifName),
+    textOpt(3, ifDescription),
+    ifSpeed ? opt(8, u64(ifSpeed)) : Buffer.alloc(0),
+    opt(9, Buffer.from([ifTsResol])),
+    ifFcsLen === null ? Buffer.alloc(0) : opt(13, Buffer.from([ifFcsLen])),
+    textOpt(12, ifOs),
+    textOpt(15, ifHardware),
     u16(0),
     u16(0),
   ]);
   blocks.push(block(0x00000001, Buffer.concat([u16(linkType), u16(0), u32(snapLen), ifOptions])));
 
+  const resolution = 10 ** ifTsResol;
   for (const p of packets) {
-    const ticks = BigInt(Math.round(p.time * 1e6));
+    const ticks = BigInt(Math.round(p.time * resolution));
     const high = Number(ticks >> 32n);
     const low = Number(ticks & 0xffffffffn);
+
+    // epb_flags: bits 0-1 direction, 2-4 reception type, 5-8 FCS length,
+    // 16-31 link-layer errors.
+    let epbOptions = Buffer.alloc(0);
+    if (p.direction || p.receptionType || p.fcsLen || p.comment) {
+      const flags =
+        ((p.direction ?? 0) & 0x03) |
+        (((p.receptionType ?? 0) & 0x07) << 2) |
+        (((p.fcsLen ?? 0) & 0x0f) << 5);
+      epbOptions = Buffer.concat([
+        flags ? opt(2, u32le(flags)) : Buffer.alloc(0),
+        p.comment ? textOpt(1, p.comment) : Buffer.alloc(0),
+        u16(0),
+        u16(0),
+      ]);
+    }
+
     const body = Buffer.concat([
       u32(0),
       u32(high),
@@ -271,6 +316,7 @@ export function writePcapng(packets, { linkType = 1, snapLen = 262144, ifName = 
       u32(p.data.length),
       u32(p.origLength ?? p.data.length),
       pad4(p.data),
+      epbOptions,
     ]);
     blocks.push(block(0x00000006, body));
   }
@@ -286,4 +332,108 @@ function pad4(buf) {
 function block(type, body) {
   const total = 12 + body.length;
   return Buffer.concat([u32(type), u32(total), body, u32(total)]);
+}
+
+/* ------------------------------------------------- 802.11 / radiotap -- */
+
+const le16 = (n) => {
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(n & 0xffff, 0);
+  return b;
+};
+const le32 = (n) => {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n >>> 0, 0);
+  return b;
+};
+const le64 = (n) => {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(BigInt(n), 0);
+  return b;
+};
+
+/**
+ * Build a radiotap header.
+ *
+ * Radiotap is always little-endian, fields appear in ascending "present" bit
+ * order, and each field is aligned to its own natural boundary relative to the
+ * start of the header — which is the part that catches people out.
+ */
+export function radiotap({ tsft, flags = 0, rate, freq, chanFlags = 0x00a0, signal, noise, antenna, mcs }) {
+  const parts = [];
+  let present = 0;
+
+  const push = (bit, align, value) => {
+    present |= 1 << bit;
+    parts.push({ align, value });
+  };
+
+  if (tsft !== undefined) push(0, 8, le64(tsft));
+  push(1, 1, Buffer.from([flags]));
+  if (rate !== undefined) push(2, 1, Buffer.from([Math.round(rate * 2)]));
+  if (freq !== undefined) push(3, 2, Buffer.concat([le16(freq), le16(chanFlags)]));
+  if (signal !== undefined) push(5, 1, Buffer.from([signal & 0xff]));
+  if (noise !== undefined) push(6, 1, Buffer.from([noise & 0xff]));
+  if (antenna !== undefined) push(11, 1, Buffer.from([antenna]));
+  if (mcs !== undefined) push(19, 1, Buffer.from([mcs.known, mcs.flags, mcs.index]));
+
+  // Fields start after the 8-byte fixed part (version, pad, length, present).
+  const body = [];
+  let offset = 8;
+  for (const part of parts) {
+    const pad = (part.align - (offset % part.align)) % part.align;
+    if (pad) {
+      body.push(Buffer.alloc(pad));
+      offset += pad;
+    }
+    body.push(part.value);
+    offset += part.value.length;
+  }
+
+  const total = offset;
+  return Buffer.concat([Buffer.from([0, 0]), le16(total), le32(present), ...body]);
+}
+
+export const DOT11 = {
+  MGMT: 0,
+  CONTROL: 1,
+  DATA: 2,
+  // Flags for the second frame-control byte.
+  TO_DS: 0x01,
+  FROM_DS: 0x02,
+  RETRY: 0x08,
+  POWER_MGMT: 0x10,
+  PROTECTED: 0x40,
+};
+
+/** Assemble an 802.11 MAC header. Sequence control is little-endian. */
+export function dot11({ type, subtype, flags = 0, duration = 0, addresses, sequence = 0, qos }) {
+  const fc0 = ((subtype & 0x0f) << 4) | ((type & 0x03) << 2);
+  const parts = [Buffer.from([fc0, flags]), le16(duration)];
+  const addrs = addresses.map(mac);
+
+  if (addrs.length <= 3) {
+    parts.push(...addrs);
+    if (type !== DOT11.CONTROL) parts.push(le16(sequence << 4));
+  } else {
+    parts.push(addrs[0], addrs[1], addrs[2], le16(sequence << 4), addrs[3]);
+  }
+  if (qos !== undefined) parts.push(le16(qos));
+  return Buffer.concat(parts);
+}
+
+/** LLC/SNAP: how a non-Ethernet link layer names an EtherType. */
+export function llcSnap(etherType) {
+  return Buffer.concat([Buffer.from([0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00]), u16(etherType)]);
+}
+
+/** A tagged information element: id, length, value. */
+export function dot11Tag(id, value) {
+  const buf = typeof value === 'string' ? Buffer.from(value, 'ascii') : Buffer.from(value);
+  return Buffer.concat([u8(id), u8(buf.length), buf]);
+}
+
+/** Fixed parameters shared by beacon and probe-response bodies. */
+export function beaconFixed({ timestamp, interval = 100, capabilities = 0x0431 }) {
+  return Buffer.concat([le64(timestamp), le16(interval), le16(capabilities)]);
 }

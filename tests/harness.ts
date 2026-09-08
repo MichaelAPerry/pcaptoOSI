@@ -109,7 +109,7 @@ function sampleByIdPackets(id: string): DissectedPacket[] {
   check('icmp: seq increments', icmp[2].info.includes('seq=2'), icmp[2].info);
   check('icmp: ttl 64 on request', fieldValue(icmp[0], 'Time to Live') === '64');
   check('icmp: ttl 52 on reply', fieldValue(icmp[1], 'Time to Live') === '52');
-  check('icmp: pcapng interface name', icmp[0].protocols[0].summary.includes('interface #0'));
+  check('icmp: pcapng interface name', icmp[0].protocols[0].summary.includes('en0'), icmp[0].protocols[0].summary);
 }
 
 {
@@ -200,6 +200,72 @@ function sampleByIdPackets(id: string): DissectedPacket[] {
   check('ipv6: AAAA answer', v6[1].info.includes('2001:db8:1234:5678::f0d'), v6[1].info);
   check('ipv6: icmpv6 echo', v6[2].info.includes('Echo Request'), v6[2].info);
   check('ipv6: big-endian pcap read', true);
+}
+
+{
+  const wifi = sampleByIdPackets('wifi');
+  check('wifi: 7 packets', wifi.length === 7, String(wifi.length));
+
+  // Layer 1 must be a real header here, not synthesised commentary.
+  const beacon = wifi[0];
+  check('wifi: radiotap dissected', beacon.protocols.some((p) => p.id === 'radiotap' && !p.virtual));
+  const radiotap = beacon.protocols.find((p) => p.id === 'radiotap')!;
+  check('wifi: radiotap is 25 bytes', radiotap.length === 25, String(radiotap.length));
+  check('wifi: channel frequency', allFields(beacon).some((f) => f.name === 'Channel frequency' && f.value.includes('2437 MHz') && f.value.includes('channel 6')));
+  check('wifi: signal strength', allFields(beacon).some((f) => f.name === 'Antenna signal (RSSI)' && f.value === '-38 dBm'));
+  check('wifi: noise floor', allFields(beacon).some((f) => f.name === 'Antenna noise' && f.value === '-95 dBm'));
+  check('wifi: TSF hardware timestamp', allFields(beacon).some((f) => f.name === 'MAC timestamp (TSF)'));
+  check('wifi: beacon rate is 1 Mbit/s', allFields(beacon).some((f) => f.name === 'Data rate' && f.value === '1 Mbit/s'));
+  check('wifi: SSID decoded', allFields(beacon).some((f) => f.name === 'SSID' && f.value === 'OSI-Lab'));
+  check('wifi: beacon info line', beacon.info.includes('Beacon') && beacon.info.includes('OSI-Lab'), beacon.info);
+
+  const beaconViews = buildLayerViews(beacon);
+  check('wifi: layer 1 has real byte ranges', beaconViews[0].ranges.length === 1 && beaconViews[0].ranges[0].length === 25);
+  check('wifi: layer 1 lists radiotap', beaconViews[0].label.includes('Radiotap'), beaconViews[0].label);
+  check('wifi: layer 3 absent on a beacon', !beaconViews[2].present);
+
+  // pcapng interface and per-packet options.
+  check('wifi: interface name', allFields(beacon).some((f) => f.name === 'Capture interface' && f.value.includes('wlan0mon')));
+  check('wifi: adapter hardware', allFields(beacon).some((f) => f.name === 'Adapter hardware' && f.value.includes('AR9280')));
+  check('wifi: capture host OS', allFields(beacon).some((f) => f.name === 'Capture host OS' && f.value.includes('ath9k')));
+  check('wifi: interface speed', allFields(beacon).some((f) => f.name === 'Interface speed' && f.value === '300 Mbit/s'));
+  check('wifi: nanosecond resolution noted', allFields(beacon).some((f) => f.name === 'Arrival time' && (f.why ?? '').includes('nanosecond')));
+  check('wifi: packet comment surfaced', allFields(beacon).some((f) => f.name === 'Packet comment' && f.value.includes('Beacon')));
+  check('wifi: reception type broadcast', allFields(beacon).some((f) => f.name === 'Reception type' && f.value === 'broadcast'));
+  check('wifi: fcs stripped noted', allFields(beacon).some((f) => f.name === 'Frame Check Sequence' && f.value.includes('stripped')));
+
+  const probeReq = wifi[1];
+  check('wifi: probe request', probeReq.info.includes('Probe Request'), probeReq.info);
+  check('wifi: wildcard SSID', allFields(probeReq).some((f) => f.name === 'SSID' && f.value.includes('wildcard')));
+
+  const dataFrame = wifi[3];
+  check('wifi: QoS data frame', dataFrame.protocols.some((p) => p.id === 'wlan'));
+  check('wifi: MCS 7 decoded', allFields(dataFrame).some((f) => f.name === 'MCS index' && f.value.includes('150.0 Mbit/s')), allFields(dataFrame).find((f) => f.name === 'MCS index')?.value);
+  check('wifi: short guard interval', allFields(dataFrame).some((f) => f.name === 'Guard interval' && f.value.includes('400 ns')));
+  check('wifi: 40 MHz bandwidth', allFields(dataFrame).some((f) => f.name === 'MCS bandwidth' && f.value === '40 MHz'));
+  check('wifi: outbound direction', allFields(dataFrame).some((f) => f.name === 'Direction' && f.value.includes('outbound')));
+  check('wifi: LLC/SNAP present', dataFrame.protocols.some((p) => p.id === 'llc'));
+  check('wifi: DNS reached through 802.11', dataFrame.protocol === 'DNS', dataFrame.protocol);
+  check('wifi: DNS name decoded', dataFrame.info.includes('lab.example.net'), dataFrame.info);
+  check('wifi: toDS address roles', allFields(dataFrame).some((f) => f.name.includes('Address 1') && f.name.includes('BSSID')));
+  const dataViews = buildLayerViews(dataFrame);
+  check('wifi: data frame reaches layer 7', dataViews[6].present);
+
+  const ack = wifi[4];
+  check('wifi: acknowledgement frame', ack.info.includes('Acknowledgement'), ack.info);
+  check('wifi: ack has one address only', allFields(ack).filter((f) => f.name.startsWith('Address ')).length === 1);
+  const ackViews = buildLayerViews(ack);
+  check('wifi: ack has no layer 3', !ackViews[2].present);
+
+  const badFcs = wifi[5];
+  check('wifi: bad FCS flagged', allFields(badFcs).some((f) => f.name === 'Radio flags' && f.value.includes('BAD FCS')));
+  check('wifi: retry flagged', allFields(badFcs).some((f) => f.name === 'Retry' && f.value.includes('retransmission')));
+  check('wifi: weak signal warning', allFields(badFcs).some((f) => f.name === 'Antenna signal (RSSI)' && f.note === 'warn'));
+  check('wifi: promiscuous reception', allFields(badFcs).some((f) => f.name === 'Reception type' && f.value === 'promiscuous'));
+
+  const response = wifi[6];
+  check('wifi: fromDS address roles', allFields(response).some((f) => f.name.includes('Address 2') && f.name.includes('BSSID')));
+  check('wifi: DNS answer', response.info.includes('192.168.1.80'), response.info);
 }
 
 /* ------------------------------------------------------------- filtering -- */

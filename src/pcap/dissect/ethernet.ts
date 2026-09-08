@@ -364,6 +364,7 @@ function dissectArp(ctx: DissectContext, offset: number, rarp: boolean): void {
   ctx.add({
     id: 'arp-osi',
     name: 'No network layer — ARP stops at Layer 2',
+    absence: true,
     abbr: 'ARP',
     layer: 3,
     virtual: true,

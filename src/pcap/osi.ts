@@ -76,14 +76,23 @@ export function buildLayerViews(packet: DissectedPacket): LayerView[] {
     const fields: Field[] = [];
     for (const p of packet.protocols) collectFields(p.fields, n, fields);
 
+    // Fields contributed purely to explain an absence do not make a layer present.
+    const absenceFields: Field[] = [];
+    for (const p of packet.protocols) {
+      if (p.absence) collectFields(p.fields, n, absenceFields);
+    }
+    const absenceIds = new Set(absenceFields.map((f) => f.id));
+
+    const realRanges = mergeRanges(
+      protocols.filter((p) => !p.virtual && p.length > 0).map((p) => ({ offset: p.offset, length: p.length })),
+    );
+
+    // Layer 1 normally owns no bytes of its own, so it claims the whole frame:
+    // those are, after all, the bits that were on the medium. The exception is
+    // a monitor-mode Wi-Fi capture, where radiotap really is a Layer 1 header
+    // occupying real bytes — then Layer 1 highlights precisely those.
     const ranges: ByteRange[] =
-      n === 1
-        ? [{ offset: 0, length: packet.bytes.length }]
-        : mergeRanges(
-            protocols
-              .filter((p) => !p.virtual && p.length > 0)
-              .map((p) => ({ offset: p.offset, length: p.length })),
-          );
+      n === 1 && realRanges.length === 0 ? [{ offset: 0, length: packet.bytes.length }] : realRanges;
 
     // Layers 5-7 often have no header of their own; fall back to the byte
     // ranges of the fields that were tagged with the layer.
@@ -95,7 +104,9 @@ export function buildLayerViews(packet: DissectedPacket): LayerView[] {
     }
 
     const realProtocols = protocols.filter((p) => !p.virtual);
-    const present = fields.length > 0 || realProtocols.length > 0;
+    const absenceProtocols = protocols.filter((p) => p.absence);
+    const present =
+      realProtocols.length > 0 || fields.some((f) => !absenceIds.has(f.id));
 
     const label =
       realProtocols.length > 0
@@ -103,6 +114,7 @@ export function buildLayerViews(packet: DissectedPacket): LayerView[] {
         : protocols.length > 0
           ? protocols.map((p) => p.name).join(', ')
           : 'Not present in this frame';
+
 
     views.push({
       layer: n,
@@ -113,7 +125,8 @@ export function buildLayerViews(packet: DissectedPacket): LayerView[] {
       ranges,
       present,
       label,
-      absenceNote: present ? undefined : ABSENCE_NOTES[n],
+      // A protocol-specific explanation always beats the generic one.
+      absenceNote: present || absenceProtocols.length > 0 ? undefined : ABSENCE_NOTES[n],
     });
   }
 

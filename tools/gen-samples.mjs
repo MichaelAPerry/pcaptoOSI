@@ -13,8 +13,14 @@ import { writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import {
   arp,
+  beaconFixed,
   bytes,
   dnsName,
+  dot11,
+  dot11Tag,
+  DOT11,
+  llcSnap,
+  radiotap,
   dnsPointer,
   ethernet,
   icmp6Echo,
@@ -814,9 +820,238 @@ function addSample(sample) {
   });
 }
 
+/* ------------------------------------------ Wi-Fi (radiotap + 802.11) -- */
+{
+  const AP_MAC = 'fc:ec:da:44:55:66';
+  const STA_MAC = '3c:07:54:1a:2b:3c';
+  const BSSID = AP_MAC;
+  const CH_FREQ = 2437; // channel 6
+  const CHAN_FLAGS_CCK = 0x00a0; // 2 GHz + CCK
+  const CHAN_FLAGS_OFDM = 0x00c0; // 2 GHz + OFDM
+  const RSN = [
+    0x01, 0x00,
+    0x00, 0x0f, 0xac, 0x04,
+    0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
+    0x01, 0x00, 0x00, 0x0f, 0xac, 0x02,
+    0x00, 0x00,
+  ];
+  const RATES = [0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24];
+  const packets = [];
+  let t = T0;
+  let tsf = 728113940;
+  let seq = 2101;
+
+  const beaconBody = (timestamp) =>
+    Buffer.concat([
+      beaconFixed({ timestamp, interval: 100, capabilities: 0x0431 }),
+      dot11Tag(0, 'OSI-Lab'),
+      dot11Tag(1, RATES),
+      dot11Tag(3, [6]),
+      dot11Tag(48, RSN),
+    ]);
+
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 3,
+    comment: 'Beacon: the access point announcing the cell about ten times a second.',
+    data: Buffer.concat([
+      radiotap({ tsft: tsf, flags: 0x00, rate: 1, freq: CH_FREQ, chanFlags: CHAN_FLAGS_CCK, signal: -38, noise: -95, antenna: 0 }),
+      dot11({ type: DOT11.MGMT, subtype: 8, addresses: ['ff:ff:ff:ff:ff:ff', AP_MAC, BSSID], sequence: seq++ }),
+      beaconBody(tsf),
+    ]),
+  });
+
+  t += 0.041882;
+  tsf += 41882;
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 3,
+    data: Buffer.concat([
+      radiotap({ tsft: tsf, flags: 0x00, rate: 1, freq: CH_FREQ, chanFlags: CHAN_FLAGS_CCK, signal: -57, noise: -95, antenna: 0 }),
+      dot11({ type: DOT11.MGMT, subtype: 4, addresses: ['ff:ff:ff:ff:ff:ff', STA_MAC, 'ff:ff:ff:ff:ff:ff'], sequence: seq++ }),
+      Buffer.concat([dot11Tag(0, ''), dot11Tag(1, RATES)]),
+    ]),
+  });
+
+  t += 0.000512;
+  tsf += 512;
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 1,
+    data: Buffer.concat([
+      radiotap({ tsft: tsf, flags: 0x00, rate: 1, freq: CH_FREQ, chanFlags: CHAN_FLAGS_CCK, signal: -39, noise: -95, antenna: 0 }),
+      dot11({ type: DOT11.MGMT, subtype: 5, addresses: [STA_MAC, AP_MAC, BSSID], sequence: seq++ }),
+      beaconBody(tsf),
+    ]),
+  });
+
+  const dnsQuery = Buffer.concat([
+    u16(0x51ad), u16(0x0100), u16(1), u16(0), u16(0), u16(0),
+    dnsName('lab.example.net'), u16(1), u16(1),
+  ]);
+  const queryPayload = Buffer.concat([
+    llcSnap(0x0800),
+    ipv4({
+      src: CLIENT_IP,
+      dst: DNS_IP,
+      protocol: 17,
+      id: 0x7c11,
+      ttl: 64,
+      payload: udp({ src: CLIENT_IP, dst: DNS_IP, sport: 51224, dport: 53, payload: dnsQuery }),
+    }),
+  ]);
+
+  t += 0.118440;
+  packets.push({
+    time: t,
+    direction: 2,
+    receptionType: 1,
+    comment: 'The only 802.11 frame type that carries anything above Layer 2.',
+    data: Buffer.concat([
+      radiotap({
+        flags: 0x00,
+        freq: CH_FREQ,
+        chanFlags: CHAN_FLAGS_OFDM,
+        signal: -55,
+        noise: -95,
+        antenna: 1,
+        mcs: { known: 0x07, flags: 0x05, index: 7 },
+      }),
+      dot11({
+        type: DOT11.DATA,
+        subtype: 8,
+        flags: DOT11.TO_DS,
+        duration: 44,
+        addresses: [BSSID, STA_MAC, AP_MAC],
+        sequence: seq,
+        qos: 0x0000,
+      }),
+      queryPayload,
+    ]),
+  });
+
+  t += 0.000016;
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 1,
+    comment: 'Layer 2 reliability: every unicast Wi-Fi frame is acknowledged within microseconds.',
+    data: Buffer.concat([
+      radiotap({ flags: 0x00, rate: 24, freq: CH_FREQ, chanFlags: CHAN_FLAGS_OFDM, signal: -38, noise: -95, antenna: 0 }),
+      dot11({ type: DOT11.CONTROL, subtype: 13, addresses: [STA_MAC] }),
+    ]),
+  });
+
+  t += 0.003104;
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 4,
+    comment: 'Hardware flagged a bad FCS: monitor mode hears frames it cannot decode cleanly.',
+    data: Buffer.concat([
+      radiotap({
+        flags: 0x40,
+        freq: CH_FREQ,
+        chanFlags: CHAN_FLAGS_OFDM,
+        signal: -84,
+        noise: -95,
+        antenna: 1,
+        mcs: { known: 0x07, flags: 0x00, index: 0 },
+      }),
+      dot11({
+        type: DOT11.DATA,
+        subtype: 8,
+        flags: DOT11.TO_DS | DOT11.RETRY,
+        duration: 44,
+        addresses: [BSSID, STA_MAC, AP_MAC],
+        sequence: seq,
+        qos: 0x0000,
+      }),
+      queryPayload,
+    ]),
+  });
+  seq++;
+
+  const dnsAnswer = Buffer.concat([
+    u16(0x51ad), u16(0x8180), u16(1), u16(1), u16(0), u16(0),
+    dnsName('lab.example.net'), u16(1), u16(1),
+    dnsPointer(12), u16(1), u16(1), u32(120), u16(4),
+    Buffer.from([192, 168, 1, 80]),
+  ]);
+
+  t += 0.021004;
+  packets.push({
+    time: t,
+    direction: 1,
+    receptionType: 1,
+    data: Buffer.concat([
+      radiotap({
+        flags: 0x00,
+        freq: CH_FREQ,
+        chanFlags: CHAN_FLAGS_OFDM,
+        signal: -38,
+        noise: -95,
+        antenna: 0,
+        mcs: { known: 0x07, flags: 0x05, index: 15 },
+      }),
+      dot11({
+        type: DOT11.DATA,
+        subtype: 8,
+        flags: DOT11.FROM_DS,
+        duration: 44,
+        addresses: [STA_MAC, BSSID, AP_MAC],
+        sequence: seq++,
+        qos: 0x0000,
+      }),
+      Buffer.concat([
+        llcSnap(0x0800),
+        ipv4({
+          src: DNS_IP,
+          dst: CLIENT_IP,
+          protocol: 17,
+          id: 0x0002,
+          ttl: 64,
+          df: false,
+          payload: udp({ src: DNS_IP, dst: CLIENT_IP, sport: 53, dport: 51224, payload: dnsAnswer }),
+        }),
+      ]),
+    ]),
+  });
+
+  addSample({
+    id: 'wifi',
+    title: 'Wi-Fi monitor mode: real Layer 1 measurements',
+    layers: 'L1/L2',
+    blurb:
+      'The one capture type that carries genuine physical-layer data. A radiotap header records what the radio actually measured — channel frequency, signal strength in dBm, antenna, modulation and coding — as real bytes you can highlight in the hex pane.',
+    teaches: [
+      'Layer 1 with measured values: 2437 MHz, -38 dBm, MCS 7, 400 ns guard interval',
+      'An 802.11 header with up to four address fields whose meaning depends on two flag bits',
+      'Beacons, probe requests and acknowledgements: frames that exist only to manage a shared medium',
+      'A retry with a bad FCS at -84 dBm, which is what a struggling client looks like before TCP notices',
+      'pcapng per-packet metadata: direction, reception type and packet comments',
+    ],
+    format: 'pcapng',
+    data: writePcapng(packets, {
+      linkType: 127,
+      ifName: 'wlan0mon',
+      ifDescription: 'Atheros AR9280 in monitor mode, channel 6',
+      ifHardware: 'Qualcomm Atheros AR9280 802.11a/b/g/n',
+      ifOs: 'Linux 6.8.0 (ath9k)',
+      ifSpeed: 300000000,
+      ifFcsLen: 0,
+      ifTsResol: 9,
+      comment: 'PCAP-to-OSI sample: Wi-Fi monitor mode with radiotap physical-layer metadata',
+    }),
+  });
+}
+
 /* --------------------------------------------------------------- output — */
 
-const order = ['arp', 'tcp', 'dns', 'http', 'tls', 'icmp', 'dhcp', 'ipv6'];
+const order = ['arp', 'tcp', 'dns', 'http', 'tls', 'icmp', 'dhcp', 'ipv6', 'wifi'];
 samples.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 
 const entries = samples.map((s) => {

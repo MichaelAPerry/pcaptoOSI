@@ -202,7 +202,7 @@ export const SAMPLE_CAPTURES: SampleCapture[] = [
     ],
     base64:
       'Cg0NCgAAAFAaKzxNAAEAAP//////////AAEAK1BDQVAtdG8tT1NJIHNhbXBsZTogSUNNUCBlY2hvIHJlcXVlc3QvcmVwbHkA' +
-      'AAAAAAAAAFAAAAABAAAAVAABAAAABAAAAAIAA2VuMAAAAwAmU3ludGhldGljIHRlYWNoaW5nIGNhcHR1cmUg4oCUIElDTVAg' +
+      'AAAAAAAAAFAAAAABAAAAVAABAAAABAAAAAIAA2VuMAAAAwAoU3ludGhldGljIHRlYWNoaW5nIGNhcHR1cmUg4oCUIElDTVAg' +
       'ZWNobwAJAAEGAAAAAAAAAAAAAFQAAAAGAAAAhAAAAAAABhObU2EtAAAAAGIAAABi/OzaRFVmPAdUGis8CABFAABUHEZAAEAB' +
       'JrbAqAEqXbjYIggAMTsKQQABYS/zZQAAAACcGg0AAAAAABAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1' +
       'NjcAAAAAAIQAAAAGAAAAhAAAAAAABhObU2FlAQAAAGIAAABiPAdUGis8/OzaRFVmCABFAABUAAAAADQBjvxduNgiwKgBKgAA' +
@@ -276,6 +276,46 @@ export const SAMPLE_CAPTURES: SampleCapture[] = [
       'eAAAAAAAAA8NgAC0cxssAAEwMTIzNDU2Nzg5Ojs8PT4/MDEyMzQ1Njc4OTo7PD0+P2XywBQAAGe3AAAAYgAAAGI8B1QaKzz8' +
       '7NpEVWaBAAAUht1gAAAAACg6QCABDbgSNFZ4AAAAAAAADw0gAQ24EjRWeAAAAAAAAAChgQCzcxssAAEwMTIzNDU2Nzg5Ojs8' +
       'PT4/MDEyMzQ1Njc4OTo7PD0+Pw==',
+  },
+  {
+    id: 'wifi',
+    title: "Wi-Fi monitor mode: real Layer 1 measurements",
+    layers: "L1/L2",
+    fileName: 'wifi-sample.pcapng',
+    format: 'pcapng',
+    byteLength: 1588,
+    blurb: "The one capture type that carries genuine physical-layer data. A radiotap header records what the radio actually measured — channel frequency, signal strength in dBm, antenna, modulation and coding — as real bytes you can highlight in the hex pane.",
+    teaches: [
+          "Layer 1 with measured values: 2437 MHz, -38 dBm, MCS 7, 400 ns guard interval",
+          "An 802.11 header with up to four address fields whose meaning depends on two flag bits",
+          "Beacons, probe requests and acknowledgements: frames that exist only to manage a shared medium",
+          "A retry with a bad FCS at -84 dBm, which is what a struggling client looks like before TCP notices",
+          "pcapng per-packet metadata: direction, reception type and packet comments"
+    ],
+    base64:
+      'Cg0NCgAAAHAaKzxNAAEAAP//////////AAEATFBDQVAtdG8tT1NJIHNhbXBsZTogV2ktRmkgbW9uaXRvciBtb2RlIHdpdGgg' +
+      'cmFkaW90YXAgcGh5c2ljYWwtbGF5ZXIgbWV0YWRhdGEAAAAAAAAAcAAAAAEAAAC0AH8AAAAEAAAAAgAId2xhbjBtb24AAwAp' +
+      'QXRoZXJvcyBBUjkyODAgaW4gbW9uaXRvciBtb2RlLCBjaGFubmVsIDYAAAAACAAIAAAAABHhowAACQABCQAAAAANAAEAAAAA' +
+      'AAwAE0xpbnV4IDYuOC4wIChhdGg5aykAAA8AJVF1YWxjb21tIEF0aGVyb3MgQVI5MjgwIDgwMi4xMWEvYi9nL24AAAAAAAAA' +
+      'AAAAtAAAAAYAAADkAAAAABe8lr2zl8gAAAAAaQAAAGkAABkAbwgAABQjZisAAAAAAAKFCaAA2qEAgAAAAP////////zs2kRV' +
+      'Zvzs2kRVZlCDFCNmKwAAAABkADEEAAdPU0ktTGFiAQiChIuWDBIYJAMBBjAUAQAAD6wEAQAAD6wEAQAAD6wCAAAAAAAAAgAE' +
+      'AAAADQABAEZCZWFjb246IHRoZSBhY2Nlc3MgcG9pbnQgYW5ub3VuY2luZyB0aGUgY2VsbCBhYm91dCB0ZW4gdGltZXMgYSBz' +
+      'ZWNvbmQuAAAAAAAAAAAA5AAAAAYAAABsAAAAABe8lr22FtoAAAAAPQAAAD0AABkAbwgAAK7GZisAAAAAAAKFCaAAx6EAQAAA' +
+      'AP///////zwHVBorPP///////2CDAAABCIKEi5YMEhgkAAAAAAIABAAAAA0AAAAAAAAAbAAAAAYAAACYAAAAABe8lr22HqkA' +
+      'AAAAaQAAAGkAABkAbwgAAK7IZisAAAAAAAKFCaAA2aEAUAAAADwHVBorPPzs2kRVZvzs2kRVZnCDrshmKwAAAABkADEEAAdP' +
+      'U0ktTGFiAQiChIuWDBIYJAMBBjAUAQAAD6wEAQAAD6wEAQAAD6wCAAAAAAAAAgAEAAAABQAAAAAAAACYAAAABgAAAOQAAAAA' +
+      'F7yWvb0t6QAAAABzAAAAcwAAFABqCAgAAACFCcAAyaEBBwUHiAEsAPzs2kRVZjwHVBorPPzs2kRVZoCDAACqqgMAAAAIAEUA' +
+      'AD18EUAAQBE7I8CoASrAqAEByBgANQApN9dRrQEAAAEAAAAAAAADbGFiB2V4YW1wbGUDbmV0AAABAAEAAAIABAAAAAYAAQA/' +
+      'VGhlIG9ubHkgODAyLjExIGZyYW1lIHR5cGUgdGhhdCBjYXJyaWVzIGFueXRoaW5nIGFib3ZlIExheWVyIDIuAAAAAAAAAADk' +
+      'AAAABgAAAKAAAAAAF7yWvb0uKAAAAAAbAAAAGwAAEQBuCAAAADCFCcAA2qEA1AAAADwHVBorPAAAAgAEAAAABQABAFNMYXll' +
+      'ciAyIHJlbGlhYmlsaXR5OiBldmVyeSB1bmljYXN0IFdpLUZpIGZyYW1lIGlzIGFja25vd2xlZGdlZCB3aXRoaW4gbWljcm9z' +
+      'ZWNvbmRzLgAAAAAAAAAAoAAAAAYAAAD0AAAAABe8lr29XYQAAAAAcwAAAHMAABQAaggIAEAAhQnAAKyhAQcAAIgJLAD87NpE' +
+      'VWY8B1QaKzz87NpEVWaAgwAAqqoDAAAACABFAAA9fBFAAEAROyPAqAEqwKgBAcgYADUAKTfXUa0BAAABAAAAAAAAA2xhYgdl' +
+      'eGFtcGxlA25ldAAAAQABAAACAAQAAAARAAEAT0hhcmR3YXJlIGZsYWdnZWQgYSBiYWQgRkNTOiBtb25pdG9yIG1vZGUgaGVh' +
+      'cnMgZnJhbWVzIGl0IGNhbm5vdCBkZWNvZGUgY2xlYW5seS4AAAAAAAAAAPQAAAAGAAAAsAAAAAAXvJa9vp4DAAAAAIMAAACD' +
+      'AAAUAGoICAAAAIUJwADaoQAHBQ+IAiwAPAdUGis8/OzaRFVm/OzaRFVmkIMAAKqqAwAAAAgARQAATQACAABAEfciwKgBAcCo' +
+      'ASoANcgYADkzs1GtgYAAAQABAAAAAANsYWIHZXhhbXBsZQNuZXQAAAEAAcAMAAEAAQAAAHgABMCoAVAAAAIABAAAAAUAAAAA' +
+      'AAAAsA==',
   },
 ];
 

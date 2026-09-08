@@ -98,6 +98,13 @@ export interface ProtocolLayer {
    * highlighted and shown, but they must not become the packet's "Protocol".
    */
   trailer?: boolean;
+  /**
+   * An absence marker: a virtual entry whose whole purpose is to explain why a
+   * layer is empty, as with ARP at Layer 3 or an 802.11 acknowledgement above
+   * Layer 2. It carries the explanation without making the layer count as
+   * present, so the inspector still dims it.
+   */
+  absence?: boolean;
 }
 
 /** Physical-interface metadata recovered from the capture file itself. */
@@ -125,9 +132,39 @@ export interface InterfaceDesc {
   linkType: number;
   linkTypeName: string;
   snapLen: number;
-  /** Power-of-ten divisor for timestamps: 1e6 for microseconds. */
+  /** Divisor for timestamps: 1e6 for microseconds, 1e9 for nanoseconds. */
   timeResolution: number;
   os?: string;
+  /** if_speed: interface bit rate in bits per second, when the capture says. */
+  speed?: number;
+  /** if_fcslen: how many bits of frame check sequence the frames still carry. */
+  fcsLength?: number;
+  /** if_hardware: free-text description of the physical adapter. */
+  hardware?: string;
+  /** if_filter: the capture filter that was in effect. */
+  filter?: string;
+}
+
+/**
+ * Per-packet metadata from a pcapng Enhanced Packet Block's options.
+ *
+ * This is genuinely physical-layer information — which way the frame was
+ * travelling through the adapter, whether the hardware flagged a CRC error,
+ * whether the FCS is still attached — and it is the sort of thing that is easy
+ * to miss because it lives in optional trailing fields rather than in the
+ * block header.
+ */
+export interface PacketOptions {
+  /** 0 = unknown, 1 = inbound, 2 = outbound. */
+  direction?: 0 | 1 | 2;
+  /** 0 unspecified, 1 unicast, 2 multicast, 3 broadcast, 4 promiscuous. */
+  receptionType?: number;
+  /** FCS length in bits, when the per-packet option overrides the interface. */
+  fcsLength?: number;
+  /** Link-layer error bits reported by the capture hardware. */
+  errorFlags?: number;
+  /** A human comment the capturing tool or an analyst attached to this frame. */
+  comment?: string;
 }
 
 /** A raw record read out of the capture file, before dissection. */
@@ -142,6 +179,8 @@ export interface RawPacket {
   originalLength: number;
   /** Index into CaptureMeta.interfaces. */
   interfaceId: number;
+  /** pcapng per-packet options, when the block carried any. */
+  options?: PacketOptions;
   /** The captured bytes. */
   bytes: Uint8Array;
 }

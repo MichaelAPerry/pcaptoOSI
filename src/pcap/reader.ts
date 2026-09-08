@@ -14,7 +14,7 @@
  * or a drop event. No bytes ever leave the browser.
  */
 
-import type { CaptureMeta, InterfaceDesc, RawPacket } from './types';
+import type { CaptureMeta, InterfaceDesc, PacketOptions, RawPacket } from './types';
 import { linkTypeName } from './linktypes';
 
 export class CaptureParseError extends Error {}
@@ -163,13 +163,52 @@ function parseOptions(bytes: Uint8Array, start: number, end: number, little: boo
   return out;
 }
 
-function optionText(opt: NgOption | undefined): string | undefined {
-  if (!opt) return undefined;
+function decodeText(value: Uint8Array): string | undefined {
   try {
-    return new TextDecoder('utf-8').decode(opt.value).replace(/\0+$/, '');
+    const text = new TextDecoder('utf-8').decode(value).replace(/\0+$/, '');
+    return text.length > 0 ? text : undefined;
   } catch {
     return undefined;
   }
+}
+
+function optionText(opt: NgOption | undefined): string | undefined {
+  return opt ? decodeText(opt.value) : undefined;
+}
+
+/**
+ * Decode an Enhanced Packet Block's options.
+ *
+ * epb_flags (code 2) is the interesting one: its low bits say which direction
+ * the frame was travelling through the adapter and how it was received, and
+ * its top bits carry link-layer error flags such as a hardware-detected CRC
+ * failure. That is real physical-layer information, and it is the only place a
+ * capture file records it.
+ */
+function parsePacketOptions(
+  bytes: Uint8Array,
+  start: number,
+  end: number,
+  little: boolean,
+): PacketOptions | undefined {
+  if (start >= end) return undefined;
+  const opts = parseOptions(bytes, start, end, little);
+  if (opts.length === 0) return undefined;
+
+  const result: PacketOptions = {};
+  const flagsOpt = opts.find((o) => o.code === 2);
+  if (flagsOpt && flagsOpt.value.length >= 4) {
+    const dv = new DataView(flagsOpt.value.buffer, flagsOpt.value.byteOffset, 4);
+    const flags = dv.getUint32(0, little);
+    result.direction = (flags & 0x03) as 0 | 1 | 2;
+    result.receptionType = (flags >> 2) & 0x07;
+    const fcsLen = (flags >> 5) & 0x0f;
+    if (fcsLen > 0) result.fcsLength = fcsLen;
+    result.errorFlags = flags >>> 16;
+  }
+  result.comment = optionText(opts.find((o) => o.code === 1));
+
+  return Object.values(result).some((v) => v !== undefined) ? result : undefined;
 }
 
 function readPcapng(buffer: ArrayBuffer): ReadResult {
@@ -227,11 +266,29 @@ function readPcapng(buffer: ArrayBuffer): ReadResult {
           const raw = tsresolOpt.value[0];
           timeResolution = raw & 0x80 ? Math.pow(2, raw & 0x7f) : Math.pow(10, raw);
         }
+        // if_speed is a 64-bit value; JavaScript numbers hold it exactly up to
+        // 2^53, which is far above any real interface bit rate.
+        const speedOpt = opts.find((o) => o.code === 8);
+        let speed: number | undefined;
+        if (speedOpt && speedOpt.value.length >= 8) {
+          const dv = new DataView(speedOpt.value.buffer, speedOpt.value.byteOffset, 8);
+          const lo = dv.getUint32(little ? 0 : 4, little);
+          const hi = dv.getUint32(little ? 4 : 0, little);
+          speed = hi * 4294967296 + lo;
+        }
+        const fcsOpt = opts.find((o) => o.code === 13);
+        const filterOpt = opts.find((o) => o.code === 11);
+
         interfaces.push({
           id: interfaces.length,
           name: optionText(opts.find((o) => o.code === 2)) ?? `interface ${interfaces.length}`,
           description: optionText(opts.find((o) => o.code === 3)),
           os: optionText(opts.find((o) => o.code === 12)),
+          hardware: optionText(opts.find((o) => o.code === 15)),
+          // if_filter's first byte is a code identifying the filter syntax.
+          filter: filterOpt && filterOpt.value.length > 1 ? decodeText(filterOpt.value.subarray(1)) : undefined,
+          speed,
+          fcsLength: fcsOpt && fcsOpt.value.length >= 1 ? fcsOpt.value[0] & 0x1f : undefined,
           linkType,
           linkTypeName: linkTypeName(linkType),
           snapLen,
@@ -253,6 +310,9 @@ function readPcapng(buffer: ArrayBuffer): ReadResult {
         }
         const res = interfaces[interfaceId]?.timeResolution ?? 1e6;
         const ticks = tsHigh * 4294967296 + tsLow;
+        // Options sit after the (4-byte aligned) packet data.
+        const paddedEnd = dataStart + capLen + ((4 - (capLen % 4)) % 4);
+        const packetOptions = parsePacketOptions(bytes, paddedEnd, bodyEnd, little);
         index++;
         packets.push({
           index,
@@ -260,6 +320,7 @@ function readPcapng(buffer: ArrayBuffer): ReadResult {
           capturedLength: capLen,
           originalLength: origLen,
           interfaceId,
+          options: packetOptions,
           bytes: bytes.subarray(dataStart, dataStart + capLen),
         });
         break;

@@ -126,8 +126,8 @@ export function CaptureLoader({ onLoadFile, onLoadSample, compact = false, error
       {!compact && (
         <p className="mt-8 text-center text-[11px] leading-relaxed faint">
           Supported: classic libpcap (all four magic-number variants) and pcapng. Link types: Ethernet, 802.1Q VLAN,
-          raw IPv4/IPv6, Linux cooked capture (SLL and SLL2) and BSD loopback. Compressed <span className="mono">.pcap.gz</span>{' '}
-          files must be decompressed first.
+          IEEE 802.11 with or without radiotap, raw IPv4/IPv6, Linux cooked capture (SLL and SLL2) and BSD loopback.
+          Compressed <span className="mono">.pcap.gz</span> files must be decompressed first.
         </p>
       )}
     </div>
