@@ -58,11 +58,21 @@ export function ttlHint(ttl: number): string {
   const match = candidates.find((c) => ttl <= c.initial && c.initial - ttl < 32);
   if (!match) return `A TTL of ${ttl} does not sit just below any of the common initial values.`;
   const hops = match.initial - ttl;
+  const fingerprint =
+    'This is the basis of passive OS fingerprinting — and the reason traceroute works: send a packet with TTL=1, ' +
+    'and the first router returns ICMP Time Exceeded, revealing itself.';
+
+  if (hops === 0) {
+    return (
+      `Common stacks start at 32, 64, 128 or 255. ${ttl} is exactly one of them, so this packet has not been ` +
+      `decremented by any router yet: it was captured on the sending host itself, or somewhere on the same segment. ` +
+      `An initial TTL of ${match.initial} points at ${match.os}. ${fingerprint}`
+    );
+  }
   return (
     `Common stacks start at 32, 64, 128 or 255. ${ttl} is ${hops} below ${match.initial}, which suggests the sender was ` +
     `${match.os} and that the packet crossed ${hops} router${hops === 1 ? '' : 's'} to reach the capture point. ` +
-    'This is the basis of passive OS fingerprinting — and the reason traceroute works: send a packet with TTL=1, ' +
-    'and the first router returns ICMP Time Exceeded, revealing itself.'
+    fingerprint
   );
 }
 

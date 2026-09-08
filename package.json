@@ -3,7 +3,31 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "PCAP-to-OSI Interactive Visualizer - a 100% client-side teaching tool that dissects real packet captures into the seven OSI layers.",
+  "description": "A browser-based teaching tool that dissects packet captures into the seven OSI layers, byte by byte, with plain-English explanations of every header field.",
+  "license": "MIT",
+  "homepage": "https://michaelaperry.github.io/pcaptoOSI/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MichaelAPerry/pcaptoOSI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MichaelAPerry/pcaptoOSI/issues"
+  },
+  "keywords": [
+    "pcap",
+    "pcapng",
+    "osi-model",
+    "networking",
+    "packet-analysis",
+    "wireshark",
+    "education",
+    "teaching",
+    "radiotap",
+    "802.11"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

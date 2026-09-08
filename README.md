@@ -1,27 +1,62 @@
 # PCAP-to-OSI Interactive Visualizer
 
-A teaching tool that takes a real packet capture and pulls it apart into the
-seven OSI layers — byte by byte, field by field, with a plain-English
-explanation of what every field does and why its value in *this* packet
-matters.
+Drop a packet capture into your browser and watch it come apart into the seven
+OSI layers — byte by byte, field by field, with a plain-English explanation of
+what every header field does and why its value in *this* packet matters.
 
-It is a single-page app that runs entirely in the browser. There is no backend,
-no upload, no telemetry and no network access at runtime: the capture file is
-read with `FileReader`, parsed in JavaScript, and never leaves the machine.
-Load the page once and it keeps working offline for the rest of the lesson.
+**[Live demo](https://michaelaperry.github.io/pcaptoOSI/)** ·
+**[Single-file download](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)**
+(419 KB, runs offline from `file://`)
+
+![The OSI layer inspector, with a field hovered and its bytes highlighted in the hex pane](docs/screenshots/01-layers.png)
+
+Everything runs in the browser. There is no backend, no upload, no telemetry
+and no network access at runtime: the file is read with `FileReader`, parsed in
+JavaScript, and never leaves the machine. Load the page once and it keeps
+working offline for the rest of the lesson.
+
+## Why this exists
+
+Wireshark is a better packet analyser than this will ever be, and nobody should
+switch. But it is built for engineers who already know how the OSI model maps
+onto real protocols, so it labels the physical-layer metadata "Frame" and
+leaves the seven-layer translation as an exercise. Students are examined on
+that translation.
+
+This tool does the one thing Wireshark deliberately doesn't: it takes a
+position on which layer every single byte belongs to, colours it accordingly,
+and explains the mapping — including all the places where the mapping is
+awkward. It is a teaching instrument, not an analyser. There's no stream
+reassembly, no decryption, no capture support. Point it at a capture and it
+will tell you *why* the bytes look the way they do.
+
+### Is the OSI model even worth teaching?
+
+It's a fair objection, and the honest answer is that the seven-layer model
+describes a protocol stack nobody deployed. The Internet runs on TCP/IP, which
+has four layers, and mapping one onto the other produces exactly the confusion
+this tool exists to address: two layers with no protocol of their own, a
+physical layer that captures cannot see, and protocols like ARP and ICMP that
+refuse to sit anywhere clean.
+
+The response here is not to paper over that. The model is still the shared
+vocabulary of every networking course, certification and job interview, so
+students need it — but a tool that pretends TCP/IP matches it teaches the wrong
+lesson twice. So this one shows where the model fits, shows where it doesn't,
+and says which is which. The awkward cases are the most instructive screens in
+the whole application.
 
 ## Running it — pick whichever is least trouble
 
-**1. In the browser, nothing to install.** Once this repository's Pages
-workflow has run (Settings → Pages → Source: GitHub Actions, then push to
-`main`), the tool is live at `https://<owner>.github.io/<repo>/` — open the
-link, drop a capture in, done. Works on Windows, macOS, Linux, and on a
-school-managed laptop where you cannot install anything. The page makes no
-network requests after it loads, so the capture still never leaves the machine.
+**1. In the browser, nothing to install.**
+<https://michaelaperry.github.io/pcaptoOSI/> — open the link, drop a capture in,
+done. Works on Windows, macOS, Linux, and on a school-managed laptop where you
+cannot install anything. The page makes no network requests after it loads, so
+the capture still never leaves the machine.
 
 **2. One file, offline, no admin rights.** Download
-`pcap-osi-visualizer.html` from the Pages site (or the CI artifact) and
-double-click it. The entire app — code, styles and all nine lab captures — is a
+[`pcap-osi-visualizer.html`](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)
+and double-click it. The entire app — code, styles and all nine lab captures — is a
 single 420 KB HTML file that runs straight from `file://`. This is the easiest
 route for a Windows classroom: put it on a shared drive or a USB stick and it
 works with no Node, no npm, no server and no installer. Build it yourself with
@@ -57,6 +92,8 @@ occupies inside the frame. That byte range is what makes everything else work.
 | OSI layer inspector | All seven layers, always, with the fields that belong to each |
 | Encapsulation diagram | Nested "Russian doll" boxes, switchable between Tx (encapsulate) and Rx (decapsulate) |
 | Hex / ASCII pane | The raw bytes, tinted by OSI layer, highlighting in sync with whatever you hover |
+
+![The encapsulation diagram in transmit mode, showing HTTP nested inside TCP inside IPv4 inside Ethernet](docs/screenshots/02-encapsulation.png)
 
 Hovering anywhere highlights the same bytes everywhere. Hover a field in the
 inspector and its bytes light up in the hex pane; hover a byte in the hex pane
@@ -135,6 +172,8 @@ a generic "Frame" node:
   corruption or merely checksum offload), the reception type — unicast,
   multicast, broadcast or promiscuous — hardware-reported link-layer error
   flags, and any comment stored with the frame.
+
+![The Layer 1 card on a Wi-Fi frame, showing measured frequency, signal strength and MCS](docs/screenshots/03-physical-layer.png)
 
 **And on Wi-Fi, Layer 1 stops being metadata and becomes measurement.** A
 monitor-mode capture prepends a radiotap header, which this tool dissects as a
@@ -350,6 +389,27 @@ dissectors and asserts roughly 4,200 things, among them:
   a warning rather than an exception.
 
 ---
+
+## How this was built
+
+Written with Claude Code, in a handful of sessions, by someone directing the
+design rather than typing the dissectors. The commit history says so in its
+trailers, and it seemed better to put that at the top of the README than to let
+someone work it out from the commit log.
+
+That is worth knowing mostly because of what it implies about how to read the
+code. The parsing engine is not trusted on the strength of having been written
+carefully; it is trusted because `tests/harness.ts` runs the real reader and the
+real dissectors over all nine bundled captures and asserts about 4,200
+properties, including that every field's byte range lies inside its frame and
+that every checksum the generator computed verifies back through an
+independently written dissector. Two bugs that mattered — Ethernet padding
+being counted as TCP payload, and a sparse-array hole that made bit-only bytes
+unhoverable — were caught by that harness and by looking at rendered output,
+not by review.
+
+If you find something wrong, an issue with the capture attached is the fastest
+way to get it fixed.
 
 ## Limitations
 
