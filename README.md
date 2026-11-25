@@ -5,9 +5,8 @@ OSI layers — byte by byte, field by field, with a plain-English explanation of
 what every header field does and why its value in *this* packet matters.
 
 **[Live demo](https://michaelperry.org/pcaposivisualizer.html)** ·
-**[Single-file download](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)**
-(419 KB, runs offline from `file://`) ·
-[GitHub Pages mirror](https://michaelaperry.github.io/pcaptoOSI/)
+[GitHub Pages mirror](https://michaelaperry.github.io/pcaptoOSI/) ·
+[Build the offline HTML](#running-it--pick-whichever-is-least-trouble)
 
 ![The OSI layer inspector, with a field hovered and its bytes highlighted in the hex pane](docs/screenshots/01-layers.png)
 
@@ -18,9 +17,8 @@ working offline for the rest of the lesson.
 
 ## Try it in class
 
-Open the [GitHub Pages mirror](https://michaelaperry.github.io/pcaptoOSI/) or use
-the [offline file](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html).
-Start with a capture you have permission to inspect. Hover over a field to match
+Open the [live visualizer](https://michaelperry.org/pcaposivisualizer.html) and
+choose a bundled synthetic capture. Hover over a field to match
 its explanation to the corresponding bytes in the hex pane.
 
 For a second activity on the same subject, try the
@@ -66,14 +64,11 @@ capture in, done. (A mirror is published to
 cannot install anything. The page makes no network requests after it loads, so
 the capture still never leaves the machine.
 
-**2. One file, offline, no admin rights.** Download
-[`pcap-osi-visualizer.html`](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html)
-and double-click it. It is byte-for-byte the same file the hosted version
-serves, so if the demo works, the download works. The entire app — code, styles and all nine lab captures — is a
-single 420 KB HTML file that runs straight from `file://`. This is the easiest
-route for a Windows classroom: put it on a shared drive or a USB stick and it
-works with no Node, no npm, no server and no installer. Build it yourself with
-`npm run build:single`.
+**2. One file, offline, no admin rights.** On a computer with Node.js 22, run
+`npm ci` and `npm run build:single` from a checkout. Then copy
+`dist/pcap-osi-visualizer.html` to the classroom computers and open it in a browser.
+The file includes the app and nine synthetic lab captures. Student computers only
+need the HTML file and a browser.
 
 **3. From source, for development.**
 
