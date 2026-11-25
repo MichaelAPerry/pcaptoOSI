@@ -16,6 +16,16 @@ and no network access at runtime: the file is read with `FileReader`, parsed in
 JavaScript, and never leaves the machine. Load the page once and it keeps
 working offline for the rest of the lesson.
 
+## Try it in class
+
+Open the [GitHub Pages mirror](https://michaelaperry.github.io/pcaptoOSI/) or use
+the [offline file](https://michaelaperry.github.io/pcaptoOSI/pcap-osi-visualizer.html).
+Start with a capture you have permission to inspect. Hover over a field to match
+its explanation to the corresponding bytes in the hex pane.
+
+For a second activity on the same subject, try the
+[OSI Lesson Game](https://github.com/MichaelAPerry/OSI-Lesson-Game).
+
 ## Why this exists
 
 Wireshark is a better packet analyser than this will ever be, and nobody should
